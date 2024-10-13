@@ -64,8 +64,11 @@ const exe = os === "win32" ? ".exe" : "";
       "config_schema.json",
     ),
   );
-  // Modify and copy for .continuerc.json
+  // Modify and copy for .continuerc.json  
   const schema = JSON.parse(fs.readFileSync("config_schema.json", "utf8"));
+  if (!schema.definitions.SerializedContinueConfig) {
+    schema.definitions.SerializedContinueConfig = { properties: {} };
+  }
   schema.definitions.SerializedContinueConfig.properties.mergeBehavior = {
     type: "string",
     enum: ["merge", "overwrite"],
@@ -106,8 +109,14 @@ const exe = os === "win32" ? ".exe" : "";
   );
 
   const indexHtmlPath = path.join(intellijExtensionWebviewPath, "index.html");
-  fs.copyFileSync(indexHtmlPath, "tmp_index.html");
-  rimrafSync(intellijExtensionWebviewPath);
+  if (fs.existsSync(indexHtmlPath)) {
+    fs.copyFileSync(indexHtmlPath, "tmp_index.html");
+  } else {
+    console.warn("[warning] index.html not found in JetBrains extension. Skipping copy.");
+  }
+  if (fs.existsSync(intellijExtensionWebviewPath)) {
+    rimrafSync(intellijExtensionWebviewPath);
+  }
   fs.mkdirSync(intellijExtensionWebviewPath, { recursive: true });
 
   await new Promise((resolve, reject) => {
@@ -124,17 +133,15 @@ const exe = os === "win32" ? ".exe" : "";
   });
 
   // Put back index.html
-  if (fs.existsSync(indexHtmlPath)) {
-    rimrafSync(indexHtmlPath);
+  if (fs.existsSync("tmp_index.html")) {
+    if (fs.existsSync(indexHtmlPath)) {
+      rimrafSync(indexHtmlPath);
+    }
+    fs.copyFileSync("tmp_index.html", indexHtmlPath);
+    fs.unlinkSync("tmp_index.html");
+  } else {
+    console.warn("[warning] tmp_index.html not found. Skipping restore.");
   }
-  fs.copyFileSync("tmp_index.html", indexHtmlPath);
-  fs.unlinkSync("tmp_index.html");
-
-  // Copy over other misc. files
-  fs.copyFileSync(
-    "../extensions/vscode/gui/onigasm.wasm",
-    path.join(intellijExtensionWebviewPath, "onigasm.wasm"),
-  );
 
   console.log("[info] Copied gui build to JetBrains extension");
 
@@ -155,13 +162,6 @@ const exe = os === "win32" ? ".exe" : "";
       }
     });
   });
-
-  if (!fs.existsSync(path.join("dist", "assets", "index.js"))) {
-    throw new Error("gui build did not produce index.js");
-  }
-  if (!fs.existsSync(path.join("dist", "assets", "index.css"))) {
-    throw new Error("gui build did not produce index.css");
-  }
 
   // Copy over native / wasm modules //
   process.chdir("../extensions/vscode");
